@@ -102,7 +102,8 @@ module.exports = function(grunt, target) {
       if (server && server.kill) {
         grunt.log.writeln('Stopping'.red + ' Express server');
 
-        server.kill('SIGTERM');
+        // server.kill('SIGTERM');
+        killProcessTree(server.pid);
         process.removeAllListeners();
         server = process._servers[target] = null;
       }
@@ -115,4 +116,57 @@ module.exports = function(grunt, target) {
       finished();
     }
   };
+
+
+  /**
+   * We support killing a process and its children.
+   * It's useful in case the process spawns other processes
+   *   for example, node-theseus.
+   *
+   * Currently we only kill direct descendants (1 level).
+   */
+  function killChildren(pid) {
+    if (process.platform === 'linux' || process.platform === 'darwin') {
+
+      // pgrep -P $pid
+      grunt.log.writeln('// TODO: support linux');
+
+    } else if (process.platform.indexOf('win') >= 0) {
+
+      // wmic process where (ParentProcessId=2480) get ProcessId
+      grunt.util.spawn({
+        cmd: 'wmic',
+        args: ['process', 'where', '(ParentProcessId=' + pid + ')', 'get', 'ProcessId']
+
+      }, function(err, result, code) {
+
+        if (err) {
+          grunt.log.writeln('Error get children processes ' + result);
+          return;
+        }
+
+        result.toString().split('\n').forEach(function(line) {
+          var i = parseInt(line);
+          try {
+            if (i) {
+              process.kill(i, 'SIGTERM');
+            }
+          } catch (e) {}
+        });
+      });
+
+    } else {
+      grunt.log.writeln('grunt-express, killChildren: Not supported platform');
+    }
+  }
+
+  function killProcessTree(pid) {
+    try {
+      killChildren(pid);
+      process.kill(pid, 'SIGTERM');
+
+    } catch (e) {
+      grunt.verbose.writeln('Process not found.');
+    }
+  }
 };
